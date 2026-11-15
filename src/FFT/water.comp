@@ -1,0 +1,69 @@
+#version 430 core
+
+/**
+ * @file water.comp
+ * @ingroup water_group
+ * @brief The setup that interpolates the water grid via time before performing the FFT.
+ */
+
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform image2D img;
+layout(rgba32f, binding = 1) uniform image2D slope_img;
+
+#define N 128
+#define L 1000
+
+
+layout(std430, binding=14) buffer WaterData
+{
+    vec4 DATA[];
+};
+
+uniform float t;
+uniform float g;
+
+void main()
+{
+    
+    int x = int(gl_GlobalInvocationID.x);
+    int y = int(gl_GlobalInvocationID.y);
+    if (x >= N || y >= N) return;
+    ivec2 coord = ivec2(x, y);
+
+    float PI_LEN = 2.0 * 3.14159265 / L;
+
+
+    float kx = (y <= N/2) ? float(y) : float(y - N);
+    float kz = (x <= N/2) ? float(x) : float(x - N);
+    kx *= PI_LEN;
+    kz *= PI_LEN;
+    uint idx = uint(y * N + x);
+    
+    float k = sqrt(kx * kx + kz * kz);
+    k = max(k, 1e-4);
+
+    float w0 = 2.0 * 3.14159265 / 100.0;
+    float omega = sqrt(9.81 * k) * t;
+    omega = mod(omega, 2 * 3.14159265);
+    float s = sin(omega);
+    float c = cos(omega);
+    vec2 c0 = vec2(c, s);
+    vec2 c1 = vec2(c, -s);
+
+    vec2 h0_k = DATA[idx].xy;
+
+
+    float a = DATA[idx].x * c0.x - DATA[idx].y * c0.y;
+    float b = DATA[idx].x * c0.y + DATA[idx].y * c0.x;
+
+    a += DATA[idx].z * c1.x - DATA[idx].w * c1.y;
+    b += DATA[idx].z * c1.y + DATA[idx].w * c1.x;
+    imageStore(img, coord, vec4(a, b, 0, 0));
+    imageStore(slope_img, coord, vec4(-b * kx, a * kx, -b * kz, a * kz));
+    memoryBarrier();
+    barrier();
+
+
+    
+}

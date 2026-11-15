@@ -1,0 +1,158 @@
+
+#version 440
+/**
+ * @file tree.comp
+ * @brief Constructs an LBVH over the radix sorted mortons.
+ * @ingroup particle_group
+ */
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+
+layout (local_size_x = WORKGROUP_SIZE) in;
+
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+    // uint64_t key;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+struct Node {
+    vec4 com_m;
+    // min and size
+    vec4 min;
+    // max and next
+    vec3 max;
+    int next;
+    // left child, right child, parent, depth
+    ivec4 lrpd;
+    // ivec4 next;
+};
+#define MAX_DEPTH 64
+layout(std430, binding=4) buffer NodeData {
+    uint ready_queue[MAX_NODES];
+    uint children_remaining[MAX_NODES];
+    uint depth_offsets[MAX_DEPTH+1];
+    vec4 com_m[MAX_NODES];
+    vec4 lrsn[MAX_NODES];
+    // min and parent
+    vec4 nmin[MAX_NODES];
+    // max and depth
+    vec4 nmax[MAX_NODES];
+};
+int shared_prefix(uint m0, uint pid0, uint m1, uint pid1) {
+    uint x = m0 ^ m1;
+    int count = 0;
+    for(int i = 31; i >= 0; i--)
+    {
+        if ((x & (uint(1) << i)) == uint(0)) count++;
+        else {
+            return count;
+        }
+    }
+    uint p = pid0 ^ pid1;
+    for(int i = 31; i >= 0; i--)
+    {
+        if ((p & (uint(1) << i)) == uint(0)) count++;
+        else {
+            return count;
+        }
+    }
+    return count;
+}
+
+int delta(int a, int b)
+{
+    if (b < 0 || b >= BODY_COUNT) return -1;
+    return shared_prefix(entry[a].morton, entry[a].pid, entry[b].morton, entry[b].pid);
+}
+
+void main()
+{
+    int i = int(gl_GlobalInvocationID.x);
+    if (i >= BODY_COUNT - 1) return;
+
+    // the least common prefixes between left and right leaves
+    int left_lcp  = (i > 0) ? shared_prefix(entry[i].morton, entry[i].pid, entry[i-1].morton, entry[i-1].pid) : -1;
+    int right_lcp = (i < BODY_COUNT-1) ? shared_prefix(entry[i].morton, entry[i].pid, entry[i+1].morton, entry[i+1].pid) : -1;
+
+    // dir
+    int d = (right_lcp > left_lcp) ? 1 : -1;
+
+    int delta_min = delta(i, i - d);
+    int lmax = 2;
+    // search in dir to find the point we break with delta_min
+    while (true)
+    {
+        int idx = int(i) + lmax * d;
+        if (idx < 0 || idx >= BODY_COUNT) break;
+        if (shared_prefix(entry[i].morton, entry[i].pid, entry[idx].morton, entry[idx].pid) <= delta_min) break;
+        lmax *= 2;
+    }
+
+    // search for the opposite end of the split
+    int l = 0;
+    for (int t = lmax / 2; t >= 1;  t /= 2)
+    {
+        int idx = int(i) + (l + t) * d;
+        if (idx < 0 || idx >= BODY_COUNT) continue;
+        if (shared_prefix(entry[i].morton, entry[i].pid, entry[idx].morton, entry[idx].pid) > delta_min) l += t;
+    }
+
+    
+    int j = i + l * d;
+    int first = min(i, j);
+    int last = max(i, j);
+    int split = first;
+    int step = last - first;
+
+    // full delta from start to finish
+    int delta_node = delta(first, last);
+    do {
+        step = (step + 1) >> 1;
+        int new_split = split + step;
+        // trying to find the lowest split to find node bounds
+        if (new_split < last)
+        {
+            int delta = delta(first, new_split);
+            if (delta > delta_node) split = new_split;
+        }   
+    } while(step > 1);
+
+    // body count is our leaf count
+    uint parent_node = BODY_COUNT + i;
+
+    // LEFT CHILD
+    if (split == first)
+    {
+        lrsn[parent_node].x = intBitsToFloat(first);
+    }
+    else
+    {
+        lrsn[parent_node].x = intBitsToFloat(BODY_COUNT + split);
+    }
+
+    // RIGHT CHILD
+    if (split + 1 == last)
+    {
+        lrsn[parent_node].y = intBitsToFloat(split + 1);
+    }
+    else
+    {
+        lrsn[parent_node].y = intBitsToFloat(BODY_COUNT + split + 1);
+    }
+
+    
+    // set parent of both children to parent node index
+    nmin[floatBitsToInt(lrsn[parent_node].x)].w = intBitsToFloat(int(parent_node));
+    nmin[floatBitsToInt(lrsn[parent_node].y)].w = intBitsToFloat(int(parent_node));
+
+    
+}

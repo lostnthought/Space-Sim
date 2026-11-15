@@ -1,0 +1,104 @@
+
+#version 440
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+layout (local_size_x = WORKGROUP_SIZE) in;
+
+struct Particle
+{
+	vec4 p_m;
+    vec4 mat;
+    vec4 vel;
+    vec4 acc;
+};
+layout(std430, binding=1) buffer ParticleData {
+
+	Particle p_spawn[BODY_COUNT];
+	vec4 p_colors[BODY_COUNT];
+	uint p_dead[BODY_COUNT];
+    uint claimed[BODY_COUNT];
+	int nodes_visited[BODY_COUNT];
+	uint star_particles[BODY_COUNT];
+    Particle p[];
+};
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+layout(std430, binding=3) buffer MortonPingData {
+
+    MortonEntry exit[];
+};
+struct Node {
+    vec4 com_m;
+    // min and size
+    vec4 min;
+    // max and next
+    vec3 max;
+    int next;
+    // left child, right child, parent, depth
+    ivec4 lrpd;
+};
+#define MAX_DEPTH 64
+layout(std430, binding=4) buffer NodeData {
+    uint ready_queue[MAX_NODES];
+    uint children_remaining[MAX_NODES];
+    uint depth_offsets[MAX_DEPTH+1];
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    vec4 com_m[MAX_NODES];
+    vec4 lrsn[MAX_NODES];
+    // min and parent
+    vec4 nmin[MAX_NODES];
+    // max and depth
+    vec4 nmax[MAX_NODES];
+};
+layout(std430, binding=6) buffer NodeCounter {
+    uint queue_out;
+    int p_dead_cnt;
+    int p_spawn_cnt;
+    uint star_pcnt;
+};
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= MAX_NODES) return;
+    children_remaining[id] = id < BODY_COUNT ? 0 : 2;
+    ready_queue[id] = 0;
+    com_m[id] = vec4(0, 0, 0, 0);
+    lrsn[id] = vec4(intBitsToFloat(-1), intBitsToFloat(-1), 0.0, intBitsToFloat(-1));
+    nmin[id] = vec4(0, 0, 0, intBitsToFloat(-1));
+    nmax[id] = vec4(0, 0, 0, intBitsToFloat(999));
+   if (id < MAX_DEPTH) depth_offsets[id] = 0;
+    if (id == 0)
+    {
+        nodes_visited[0] = 0;
+        queue_out = 0;
+        star_pcnt = 0;
+        depth_offsets[0] = BODY_COUNT;
+
+    }
+    if (id >= BODY_COUNT) return;
+    uint pid = entry[id].pid;
+    Particle e = p[pid];
+    nmax[id].w = intBitsToFloat(0);
+    com_m[id] = e.p_m;
+    lrsn[id].z = e.p_m.w;
+    nmin[id].xyz = e.p_m.xyz;
+    nmax[id].xyz = e.p_m.xyz;
+    if (e.p_m.w <= 0)
+    {
+        int idx = atomicAdd(p_dead_cnt, 1);
+        p_dead[idx] = pid;
+    }
+    claimed[id] = 0;
+}

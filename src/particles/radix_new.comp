@@ -1,0 +1,89 @@
+#version 440
+/**
+ * @file radix_new.comp
+ * @brief Step one of radix sort.
+ * @ingroup particle_group
+ */
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+#define ITERATIONS 8
+
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+uniform int iteration;
+layout (local_size_x = WORKGROUP_SIZE) in;
+
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+layout(std430, binding=3) buffer MortonPingData {
+
+    MortonEntry exit[];
+};
+layout(std430, binding=7) buffer RadixData {
+
+
+    uint local_prefix[5000 * WORKGROUP_SIZE];
+    uint local_offsets[BODY_COUNT];
+    uint block_bin_count[5000 * RADIX_SORT_BINS];
+    uint global_offsets[5000 * RADIX_SORT_BINS];
+    uint local_bin_count[5000 * RADIX_SORT_BINS];
+};
+
+#define ELEMENT_IN(index, iteration) (iteration % 2 == 0 ? entry[index] : exit[index])
+
+void main()
+{
+    uint tid = gl_GlobalInvocationID.x;
+    uint lid = gl_LocalInvocationID.x;
+    
+    uint shift = uint(4 * iteration);
+    bool is_worker = tid < BODY_COUNT;
+
+    uint lbc = gl_WorkGroupID.x * RADIX_SORT_BINS + lid;
+    
+    if (lid < RADIX_SORT_BINS) local_bin_count[lbc] = 0;
+    memoryBarrier();
+    barrier();
+
+    MortonEntry e;
+    if (is_worker) e = ELEMENT_IN(tid, iteration);
+
+    uint bin = uint(e.morton >> shift) & uint(RADIX_SORT_BINS-1);
+
+    uint lbc2 = gl_WorkGroupID.x * RADIX_SORT_BINS + bin;
+    if (is_worker) atomicAdd(local_bin_count[lbc2], 1U);
+
+    memoryBarrier();
+    barrier();
+    
+    uint rank_in_bin = 0;
+    if (is_worker)
+    {
+        
+        for (uint i = 0; i < lid; i++) {
+            MortonEntry prev = ELEMENT_IN(i + WORKGROUP_SIZE * gl_WorkGroupID.x, iteration);
+            uint prev_bin = uint(prev.morton >> shift) & uint(RADIX_SORT_BINS-1);
+            if (prev_bin == bin) rank_in_bin++;
+        }
+        local_offsets[tid] = rank_in_bin;
+    }
+
+    memoryBarrier();
+    barrier();
+    if (lid == 0 && is_worker) {
+        for (int b = 0; b < RADIX_SORT_BINS; b++)
+        {
+            uint bbc = gl_WorkGroupID.x * RADIX_SORT_BINS + b;
+            block_bin_count[gl_WorkGroupID.x * RADIX_SORT_BINS + b] = local_bin_count[gl_WorkGroupID.x * RADIX_SORT_BINS + b];
+        }
+    }
+  
+}

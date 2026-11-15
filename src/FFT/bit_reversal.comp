@@ -1,0 +1,36 @@
+#version 440
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(rgba32f, binding = 0) readonly uniform image2D inIMG;
+layout(rgba32f, binding = 1) writeonly uniform image2D outIMG;
+
+/**
+ * @file bit_reversal.comp
+ * @ingroup water_group
+ * @brief Reverses the bits before performing the FFT.
+ */
+
+#define N 128
+
+uint reverseBits(uint x, uint log2N)
+{
+    uint n = 0;
+    for (uint i = 0; i < log2N; i++)
+    {
+        n = (n << 1) | (x & 1);
+        x >>= 1;
+    }
+    return n;
+}
+uniform int log2N;
+void main()
+{
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= N || y >= N) return;
+    uint rx = reverseBits(x, log2N);
+    uint ry = reverseBits(y, log2N);
+
+    vec4 val = imageLoad(inIMG, ivec2(rx, ry));
+    imageStore(outIMG, ivec2(x, y), val);
+}

@@ -1,0 +1,91 @@
+
+#version 440
+/**
+ * @file next.comp
+ * @brief Traverses the LBVH top-down and assigns stackless pointers on its way down.
+ * @ingroup particle_group
+ */
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+layout (local_size_x = WORKGROUP_SIZE) in;
+struct Node {
+    vec4 com_m;
+    // min and size
+    vec4 min;
+    // max and next
+    vec3 max;
+    int next;
+    // left child, right child, parent, depth
+    ivec4 lrpd;
+};
+#define MAX_DEPTH 64
+layout(std430, binding=4) buffer NodeData {
+    uint ready_queue[MAX_NODES];
+    uint children_remaining[MAX_NODES];
+    uint depth_offsets[MAX_DEPTH+1];
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    // center of mass and mass
+    vec4 com_m[MAX_NODES];
+    // left right
+    vec4 lrsn[MAX_NODES];
+    // min and parent
+    vec4 nmin[MAX_NODES];
+    // max and depth
+    vec4 nmax[MAX_NODES];
+};
+uniform int depth;
+uniform int max_depth;
+uniform bool first_iter;
+uniform uint current_depth_offset;
+uniform uint current_amt;
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= MAX_NODES) return;
+
+
+    int d = floatBitsToInt(nmax[id].w);
+    
+    // set all child node's "next" to the parent's right node
+    // this must be done from the top-down (root first and then each depth subsequently)
+    // if current node's depth isn't the current depth
+    if (d < depth || d == 999 || d > depth) {
+        return;
+    }
+
+    int p = floatBitsToInt(nmin[id].w);
+
+    // if parent
+    if (p != -1)
+    {
+
+        // check parent lrsn (left right radius next)
+        vec4 lr = lrsn[p];
+        int left = floatBitsToInt(lr.x);
+        int right = floatBitsToInt(lr.y);
+        int n = floatBitsToInt(lr.w);
+        // if we are our parent's left child, set our next to its right child
+        if (left == id)
+        {
+            lrsn[id].w = lr.y;
+        }
+        else
+        {
+            // else set it to our parent next
+            lrsn[id].w = lr.w;
+        }
+    }
+    else
+    {
+        // if no parent, set parent right to -1
+        lrsn[id].w = intBitsToFloat(-1);
+    }
+    
+}

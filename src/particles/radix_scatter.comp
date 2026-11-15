@@ -1,0 +1,64 @@
+#version 440
+/**
+ * @file radix_scatter.comp
+ * @brief Step three of radix sort.
+ * @ingroup particle_group
+ */
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+#define ITERATIONS 8
+
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+uniform int iteration;
+layout (local_size_x = WORKGROUP_SIZE) in;
+
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+layout(std430, binding=3) buffer MortonPingData {
+
+    MortonEntry exit[];
+};
+layout(std430, binding=7) buffer RadixData {
+
+
+    uint local_prefix[5000 * WORKGROUP_SIZE];
+    uint local_offsets[BODY_COUNT];
+    uint block_bin_count[5000 *RADIX_SORT_BINS];
+    uint global_offsets[5000 * RADIX_SORT_BINS];
+    uint local_bin_count[5000* RADIX_SORT_BINS];
+
+};
+void main()
+{
+    
+    uint tid = gl_GlobalInvocationID.x;
+
+    if (tid >= BODY_COUNT) return;
+    MortonEntry e;
+    uint shift = uint(iteration * 4);
+    if (iteration % 2 == 0) {
+        e = entry[tid];
+    } else {
+        e = exit[tid];
+    }
+
+    uint bin = uint(e.morton >> shift) & uint(RADIX_SORT_BINS-1);
+
+    uint final_offset = global_offsets[gl_WorkGroupID.x * RADIX_SORT_BINS + bin] + local_offsets[tid];
+    
+    if (iteration % 2 == 0) {
+        exit[final_offset] = e;
+    } else
+    {
+        entry[final_offset] = e;
+    }
+}

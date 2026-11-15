@@ -1,0 +1,8 @@
+.cache/
+bin/
+build/
+docs/
+extra_font/
+fonts/
+include/
+lib/

@@ -1,0 +1,22 @@
+/** @mainpage Space Sim Documentation
+ * <small>
+ * @ref intro_sec | @ref features_sec | @ref particle_ss | @ref surface_ss | @ref atmosphere_ss | @ref water_ss
+ * </small>
+ * @section intro_sec Introduction
+ * <span style="font-size: 15px;">
+ * This is the documentation for a Space Simulation.<br>
+ * This simulation is an N-body simulation that also constructs planet surfaces and atmospheres in real time.<br>
+ * It is nearly entirely on the GPU and supports even Intel UHD 620.<br>
+ * For further information on this project: [*Youtube (Devlogs and Streams)*](https://www.youtube.com/@dustmite-c) | [*Github*](https://github.com/lostnthought/Untitled) | [*Website (Blogs)*](https://lostnthought.github.io/lostnthought/index.html)<br>
+ * </span>
+ *
+ * @section features_sec Features and Systems
+ * @subsection particle_ss Particles (\ref sim_step() "Formulas")
+ * Particle%s are initialized with configurable weighted mass distributed through the system in a sphere. During a simulation step, each particle is considered in building a bounding box, which is gradually widened in compute via a prefix sum. MortonPair%s are computed per Particle and stored with a 64 bit key. These are then radix sorted. A LBVH (NodeData) is built over them, and is traversed leaves-up to propagate center of mass towards the root. Then, to ensure a stackless traversal, the tree is iterated per layer from root-down, assigning next indices as it approaches the leaves. Finally, each particle is evaluated, traversing the LBVH and accumulating forces using Barnes-Hut. Positions are integrated all at once in the final step.<br>
+ * @subsection surface_ss Planet Surfaces
+ * Planet surfaces are interpreted in real time using layered noise. To accomplish this, a chunking system is in place to store already-meshed data. This system is a 3D cube around the Camera, which expands out into four LodLevels. Each level has its own resolution, and as the Camera moves towards the lower levels, the chunks are re-meshed at a new higher resolution. The meshing is done in two steps: the density function and marching cubes. The \ref mesh/density.comp "density" grid is populated using a layered noise function. Then, marching cubes is carried out on the chunk, resulting in a mesh that is then pushed as an indirect draw call. Each frame, a job list is accumulated and sorted based on importance. These replace free chunks or low-priority chunks that are either far away or outside of the player frustum, based on ChunkScore. ChunkData is stored so that future iterations will be aware of chunk relationships. Each chunk has another LOD level stored, used as a fallback and also for stochastic dithering to avoid harsh chunk transitions. These chunks use three hash tables that control what chunks were emitted with zero vertices (to avoid recomputing empty chunks), what chunks own the higher LOD level of a chunk pairing, and what chunks are currently meshed and rendering.
+ * @subsection atmosphere_ss Atmosphere 
+ * In this space sim, the atmosphere is estimated using Rayleigh-Mie atmospheric scattering. To save on cost, it is mainly computed per vertex on a physical sphere that is permanently surrounding the Camera. Based on distance to planet center, the rays are manipulated to give the appearance of "taking off" from the planet surface. Similarly, the cloud system also projects onto this sphere, and it uses layered precomputed noise textures to express a 3D shape. Each frame, the atmosphere and clouds are rendered to a cubemap, and sampled for the sky and reflections. 
+ * @subsection water_ss Water
+ * The water is computed using an FFT. It is initialized using a wind direction and its amplitude is assigned using the Phillips spectrum. During a frame, the water grid is updated using the time step, sine modulation, and its angular velocity. Then, its initial data and its conjugates are interpolated by those values. A forward FFT is performed, and the resulting grids are the heightmap and the slope normals respectively. These then manipulate the vertices of a flat plane that is rendered at the planet water level. In shaders, the foam and transparency of the water is computed using the depth buffer and it is overlaid on top of the planet surface FBO.
+ */

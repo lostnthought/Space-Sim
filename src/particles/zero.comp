@@ -1,0 +1,93 @@
+#version 430 core
+
+/**
+ * @file zero.comp
+ * @brief Zeros out the min and the max before computing the bounds over all particles.
+ * @ingroup particle_group
+ */
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+
+#define WORKGROUP_SIZE 128
+layout (local_size_x = WORKGROUP_SIZE) in;
+
+struct Particle
+{
+	vec4 p_m;
+    vec4 mat;
+    vec4 vel;
+    vec4 acc;
+};
+layout(std430, binding=1) buffer ParticleData {
+
+	Particle p_spawn[BODY_COUNT];
+	vec4 p_colors[BODY_COUNT];
+	uint p_dead[BODY_COUNT];
+    uint claimed[BODY_COUNT];
+	int nodes_visited[BODY_COUNT];
+	uint star_particles[BODY_COUNT];
+    Particle p[];
+};
+
+layout(std430, binding=5) buffer BoundsData {
+    uint minx;
+    uint miny;
+    uint minz;
+    uint maxx;
+    uint maxy;
+    uint maxz;
+};
+struct Node {
+    vec4 com_m;
+    // min and size
+    vec4 min;
+    // max and next
+    vec3 max;
+    int next;
+    // left child, right child, parent, depth
+    ivec4 lrpd;
+    // ivec4 next;
+};
+#define MAX_DEPTH 64
+layout(std430, binding=4) buffer NodeData {
+    uint ready_queue[MAX_NODES];
+    uint children_remaining[MAX_NODES];
+    uint depth_offsets[MAX_DEPTH+1];
+    vec4 com_m[MAX_NODES];
+    vec4 lrsn[MAX_NODES];
+    // min and parent
+    vec4 nmin[MAX_NODES];
+    // max and depth
+    vec4 nmax[MAX_NODES];
+};
+layout(std430, binding=6) buffer NodeCounter {
+    uint queue_out;
+    int p_dead_cnt;
+    int p_spawn_cnt;
+    uint star_pcnt;
+};
+
+
+uint floatToOrderedUint(float f)
+{
+    uint x = floatBitsToUint(f);
+    uint mask = (x & 0x80000000u) != 0u ? 0xffffffffu : 0x80000000u;
+    return x ^ mask;
+}
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id == 0)
+    {
+
+        p_dead_cnt = 0;
+        p_spawn_cnt = 0;
+        
+        minx = floatToOrderedUint(1e30);
+        miny = floatToOrderedUint(1e30);
+        minz = floatToOrderedUint(1e30);
+        maxx = floatToOrderedUint(-1e30);
+        maxy = floatToOrderedUint(-1e30);
+        maxz = floatToOrderedUint(-1e30);
+    }
+}

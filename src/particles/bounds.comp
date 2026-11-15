@@ -1,0 +1,121 @@
+#version 440
+/**
+ * @file bounds.comp
+ * @brief Computes the bounds over all particles in the sim.
+ * @ingroup particle_group
+ */
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+
+#define WORKGROUP_SIZE 128
+layout (local_size_x = WORKGROUP_SIZE) in;
+struct Particle
+{
+	vec4 p_m;
+    vec4 mat;
+    vec4 vel;
+    vec4 acc;
+};
+layout(std430, binding=1) buffer ParticleData {
+
+	Particle p_spawn[BODY_COUNT];
+	vec4 p_colors[BODY_COUNT];
+	uint p_dead[BODY_COUNT];
+    uint claimed[BODY_COUNT];
+	int nodes_visited[BODY_COUNT];
+	uint star_particles[BODY_COUNT];
+    Particle p[];
+};
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+layout(std430, binding=3) buffer MortonPingData {
+
+    MortonEntry exit[];
+};
+
+layout(std430, binding=5) buffer BoundsData {
+    uint minx;
+    uint miny;
+    uint minz;
+    uint maxx;
+    uint maxy;
+    uint maxz;
+};
+uint floatToOrderedUint(float f)
+{
+    uint x = floatBitsToUint(f);
+    uint mask = (x & 0x80000000u) != 0u ? 0xffffffffu : 0x80000000u;
+    return x ^ mask;
+}
+shared float localMinX[WORKGROUP_SIZE];
+shared float localMinY[WORKGROUP_SIZE];
+shared float localMinZ[WORKGROUP_SIZE];
+shared float localMaxX[WORKGROUP_SIZE];
+shared float localMaxY[WORKGROUP_SIZE];
+shared float localMaxZ[WORKGROUP_SIZE];
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    uint lid = gl_LocalInvocationID.x;
+
+
+
+    uint a = uint(min(WORKGROUP_SIZE, BODY_COUNT - gl_WorkGroupID.x * WORKGROUP_SIZE));
+    if (i < BODY_COUNT)
+    {
+        Particle e = p[i];
+        vec4 p_m = e.p_m;
+        localMinX[lid] = p_m.x;
+        localMinY[lid] = p_m.y;
+        localMinZ[lid] = p_m.z;
+        localMaxX[lid] = p_m.x;
+        localMaxY[lid] = p_m.y;
+        localMaxZ[lid] = p_m.z;
+    } else
+    {
+        localMinX[lid] = 1e30;
+        localMinY[lid] = 1e30;
+        localMinZ[lid] = 1e30;
+        localMaxX[lid] = -1e30;
+        localMaxY[lid] = -1e30;
+        localMaxZ[lid] = -1e30;
+        
+    }
+    barrier();
+
+    for (uint offset = a / 2; offset > 0; offset >>= 1) {
+        if (lid < offset && lid + offset < a) {
+            localMinX[lid] = min(localMinX[lid], localMinX[lid + offset]);
+            localMinY[lid] = min(localMinY[lid], localMinY[lid + offset]);
+            localMinZ[lid] = min(localMinZ[lid], localMinZ[lid + offset]);
+            localMaxX[lid] = max(localMaxX[lid], localMaxX[lid + offset]);
+            localMaxY[lid] = max(localMaxY[lid], localMaxY[lid + offset]);
+            localMaxZ[lid] = max(localMaxZ[lid], localMaxZ[lid + offset]);
+        }
+        barrier();
+    }
+
+
+    if (lid == 0) {
+        atomicMin(minx, floatToOrderedUint(localMinX[0]));
+        atomicMin(miny, floatToOrderedUint(localMinY[0]));
+        atomicMin(minz, floatToOrderedUint(localMinZ[0]));
+        atomicMax(maxx, floatToOrderedUint(localMaxX[0]));
+        atomicMax(maxy, floatToOrderedUint(localMaxY[0]));
+        atomicMax(maxz, floatToOrderedUint(localMaxZ[0]));
+    }
+
+    
+
+    
+        
+}
+

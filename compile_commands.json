@@ -1,0 +1,121 @@
+[
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/camera.c",
+   "-o",
+   "build/camera.o"
+  ],
+  "file": "src/core/camera.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/init.c",
+   "-o",
+   "build/init.o"
+  ],
+  "file": "src/core/init.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/main.c",
+   "-o",
+   "build/main.o"
+  ],
+  "file": "src/core/main.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/menu.c",
+   "-o",
+   "build/menu.o"
+  ],
+  "file": "src/core/menu.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/nk_impl.c",
+   "-o",
+   "build/nk_impl.o"
+  ],
+  "file": "src/core/nk_impl.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/core/shaders.c",
+   "-o",
+   "build/shaders.o"
+  ],
+  "file": "src/core/shaders.c"
+ },
+ {
+  "directory": "C:\\Users\\Dustmite\\dev\\space3",
+  "arguments": [
+   "gcc",
+   "-Wall",
+   "-Wextra",
+   "-O3",
+   "-Isrc",
+   "-I",
+   "./third-party",
+   "-c",
+   "src/mesh/mesh.c",
+   "-o",
+   "build/mesh.o"
+  ],
+  "file": "src/mesh/mesh.c"
+ }
+]

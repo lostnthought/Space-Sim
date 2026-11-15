@@ -1,0 +1,82 @@
+#version 440
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(rgba32f, binding = 0) readonly uniform image2D inputTex;
+layout(rgba32f, binding = 1) writeonly uniform image2D outputTex;
+
+/**
+ * @file fft.comp
+ * @ingroup water_group
+ * @brief Performs an FFT on the water grid.
+ */
+
+#define N 128
+
+uniform int stage;     
+uniform int direction; 
+uniform int final_stage; 
+
+vec4 cmul2(vec4 a, vec2 w) {
+    return vec4(
+        a.x * w.x - a.y * w.y,  
+        a.x * w.y + a.y * w.x,  
+
+        a.z * w.x - a.w * w.y,  
+        a.z * w.y + a.w * w.x   
+    );
+}
+
+void main()
+{
+    
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= N || id.y >= N) return;
+
+    int i = (direction == 0) ? id.x : id.y;
+    int j = (direction == 0) ? id.y : id.x;
+
+    int halfSize = 1 << stage;
+    int step = halfSize << 1;
+
+
+    if ((i % step) >= halfSize) return;
+
+    int k = (i / step) * step;
+    int offset = i % halfSize;
+
+    int i0 = k + offset;
+    int i1 = i0 + halfSize;
+
+    ivec2 coord0 = (direction == 0) ? ivec2(i0, j) : ivec2(j, i0);
+    ivec2 coord1 = (direction == 0) ? ivec2(i1, j) : ivec2(j, i1);
+
+    vec4 a = imageLoad(inputTex, coord0);
+    vec4 b = imageLoad(inputTex, coord1);
+
+    float angle = 0;
+    if (direction == 0)
+    {
+        
+        angle = -2.0 * 3.14159265 * float(offset) / float(step);
+    }
+    else
+    {
+        angle = 2.0 * 3.14159265 * float(offset) / float(step);
+    }
+    vec2 twiddle = vec2(cos(angle), sin(angle));
+
+    vec4 t = cmul2(b, twiddle);
+
+    vec4 out0 = a + t;
+    vec4 out1 = a - t;
+
+    if (final_stage == 1)
+    {
+        out0 /= (N * N);
+        out1 /= (N * N);
+    }
+
+    imageStore(outputTex, coord0, out0);
+    imageStore(outputTex, coord1, out1);
+
+}
+

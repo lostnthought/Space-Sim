@@ -1,0 +1,142 @@
+
+#version 440
+/**
+ * @file com22.comp
+ * @brief Propagates mass back up to the root while computing the center of mass and bounds for each node along the way.
+ * @ingroup particle_group
+ */
+#define WORKGROUP_SIZE 128
+#define RADIX_SORT_BINS 128
+#define SUBGROUP_SIZE 32
+#define BODY_COUNT 15000
+#define MAX_NODES 45000
+layout (local_size_x = WORKGROUP_SIZE) in;
+struct Particle
+{
+	vec4 p_m;
+    vec4 mat;
+    vec4 vel;
+    vec4 acc;
+};
+layout(std430, binding=1) buffer ParticleData {
+
+	Particle p_spawn[BODY_COUNT];
+	vec4 p_colors[BODY_COUNT];
+	uint p_dead[BODY_COUNT];
+    uint claimed[BODY_COUNT];
+	int nodes_visited[BODY_COUNT];
+	uint star_particles[BODY_COUNT];
+    Particle p[];
+};
+struct MortonEntry
+{
+    uint pid;  
+    uint morton;
+};
+layout(std430, binding=2) buffer MortonData {
+
+    MortonEntry entry[];
+};
+layout(std430, binding=3) buffer MortonPingData {
+
+    MortonEntry exit[];
+};
+struct Node {
+    vec4 com_m;
+    // min and size
+    vec4 min;
+    // max and next
+    vec3 max;
+    int next;
+    // left child, right child, parent, depth
+    ivec4 lrpd;
+    // ivec4 next;
+};
+#define MAX_DEPTH 64
+layout(std430, binding=4) buffer NodeData {
+    uint ready_queue[MAX_NODES];
+    uint children_remaining[MAX_NODES];
+    uint depth_offsets[MAX_DEPTH+1];
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    vec4 com_m[MAX_NODES];
+    vec4 lrsn[MAX_NODES];
+    // min and parent
+    vec4 nmin[MAX_NODES];
+    // max and depth
+    vec4 nmax[MAX_NODES];
+};
+layout(std430, binding=6) buffer NodeCounter {
+    uint queue_out;
+    int p_dead_cnt;
+    int p_spawn_cnt;
+    uint star_pcnt;
+};
+uniform int depth;
+
+void main()
+{
+    if (depth == 0)
+    {
+        uint i = gl_GlobalInvocationID.x;
+        if (i >= BODY_COUNT) return;
+
+        int p = floatBitsToInt(nmin[i].w);
+        if (p >= 0) {
+            uint remaining = atomicAdd(children_remaining[p], -1); 
+            if (remaining == 1) {     
+                uint amt = atomicAdd(depth_offsets[depth+1], 1);
+                ready_queue[amt] = uint(p);   
+            }
+        }
+        return;
+    }
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= depth_offsets[depth]) return;
+    uint i = ready_queue[id];
+    ready_queue[id] = 0;
+    vec4 lr = lrsn[i];
+    int lc = floatBitsToInt(lr.x);
+    int rc = floatBitsToInt(lr.y);
+
+    vec4 lcom = com_m[lc];
+    vec4 lmin = nmin[lc];
+    vec4 lmax = nmax[lc];
+    vec4 rcom = com_m[rc];
+    vec4 rmin = nmin[rc];
+    vec4 rmax = nmax[rc];
+    
+
+    float total_mass = lcom.w + rcom.w;
+    vec3 w = lcom.xyz * lcom.w + rcom.xyz * rcom.w;
+
+    vec4 com = vec4(w, total_mass);
+    if (total_mass > 0.0) {
+        com.xyz = w / total_mass;
+    }
+    vec3 mmin = min(lmin.xyz, rmin.xyz);
+    vec3 mmax = max(lmax.xyz, rmax.xyz);
+    nmax[i].xyz = mmax;
+    nmax[i].w = intBitsToFloat(max(floatBitsToInt(lmax.w), floatBitsToInt(rmax.w)) + 1);
+
+    vec3 d = mmax - mmin;
+
+    float r = max(max(d.x, d.y), d.z);
+
+
+    com_m[i] = com;
+    nmin[i].xyz = mmin;
+    lrsn[i].z = r*r;
+
+    int p = floatBitsToInt(nmin[i].w);
+    if (p >= 0) {
+        uint remaining = atomicAdd(children_remaining[p], -1); 
+        if (remaining == 1) {     
+            uint amt = atomicAdd(depth_offsets[depth+1], 1);
+            ready_queue[amt] = uint(p);   
+        }
+    }
+        
+    
+}
