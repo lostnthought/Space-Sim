@@ -23,7 +23,7 @@ You will need:
 ```bash
 make
 ```
-Place glew32.dll, SDL2.dll, and alongside the binary in bin/. If you have any further trouble, try using the pkg-config included in the makefile.
+Place glew32.dll and SDL2.dll alongside the binary in bin/. If you have any further trouble, try using the pkg-config included in the makefile.
 
 For inputs and controls, refer to input.c.
 
